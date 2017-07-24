@@ -1,201 +1,206 @@
-import React,{Children} from "react";
+import Provider ,{watch as _watch} from "./connect.js"
+export default Provider;
+export const watch = _watch;
 
-export class Store{
-  constructor(state){
-    this.childStores=[];
-    this._onChangeHandler=[];
-    this.mainStore=new SubStore(state,this);
-    this.state=this.mainStore.state;
-  }
-  getStoreByState(state){
-    const store=this.mainStore.find(state)
-  }
-  getState(){
-    return this.state;
-  }
-  getSubItem(reduce){
-     const plc=new SubStore(reduce);
-     this.childStores.push(plc);
-     return plc.state;
-  }
-  onChange(){
-    this._onChangeHandler.push(handler);
-  }
-  triggerOnChange(newValue,oldValue){
-    this._onChangeHandler.forEach(function(item) {
-      item(newValue,oldValue);
-    });
-  }
-  RunTimeBind=(state)=>{
-    let findStore=this.mainStore.find(state);
-    if(!findStore){
-      this.childStores.forEach((store)=>{
-         const subStore=store.find(state)
-         if(subStore){findStore=subStore};
-      });
-    }
-    findStore.onChangeBubbleBreakOff(true);
-    return (Component)=>{
-      return class WatchComponent extends React.Component{
-        constructor(p,c){
-          super(p,c);
-          findStore.onChange(()=>{
-            this.forceUpdate();
-          });
-        }
-        render(){
-          const t={dstoreData:state};
-          const props={...this.props,...t}
-          return <Component {...props} />
-        }
-      }
-    }
-  }
-}
+let isDebugger=true;
 
-
-function creator(key,set){
+function creator(key,set,state){
   let value;
-  const self=this;
   let status=0;
-  Object.defineProperty(this.state,key,{
-      enumerable: true,
-      set(newValue){
+  let setter;
+  if(typeof(set)=="function"){
+      setter=(newValue)=>{
+        this.rootStore.link=(Store)=>{
+          Store.rootStore=this.rootStore;
+          Store.fatherStore=this;
+          if(!this.Store[key]){
+            this.Store[key]=[];
+          }
+          this.Store[key].push(Store);
+        }
         if(status==1){
           return console.warn("old value can't modify ",key);
         }
         status=1;
-        const resultValue=set.call(self.rootStore,newValue,value,self.store)
-        self.triggerOnChange(value,resultValue);
+        const resultValue=set.call(this.rootStore,newValue,value,this.store)
         value=resultValue;
-        console.log(key,value);
+        this._fireChange(value);
         status=0;
-      },
+
+      };
+  }else if(set!=null&&typeof(set)=="object"){
+      value=state;
+      setter=(newValue)=>{
+        isDebugger&&console.warn(key,newValue,"This key is not a setter function!");
+      };
+  }else{
+      value=set;
+      setter=(newValue)=>{
+        isDebugger&&console.warn(key,newValue,"This key is const!");
+      };
+  } 
+  Object.defineProperty(this.state,key,{
+      enumerable: true,
+      set:setter,
       get(){
         return value;
       }
   });
-  this.state[key]=undefined;
+  if(typeof(set)=="function"){
+    this.state[key]=undefined;
+  }
 }
 
 
-class SubStore{
+export class Store{
   constructor(reduce,rootStore,fatherStore){
     this.state={}
-    this._changeBubbleBreakOff=false;
-    this.rootStore=rootStore;
-    this.fatherStore=fatherStore||rootStore;
-    this.StoreMap={};
     this._onChangeHandler=[];
+    this.rootStore=rootStore||this;
+    this.fatherStore=fatherStore;
+    this.Store={};
     for(var i in reduce){
       const temp=reduce[i];
-      if(typeof(temp)=="function"){
-        creator.call(this,i,temp);
-        this.StoreMap[i]=new SubStore({},rootStore,this);
-      }else if(typeof(temp)=="object"){
-        this.StoreMap[i]=new SubStore(temp,rootStore,this);
-        this.state[i]=this.StoreMap[i].state;
-      }
+      this.reConfig(i,temp,false);
     }
     Object.preventExtensions(this.state); //使对象不可扩展
+    if(this.fatherStore==undefined){// 根 store
+      console.log("fefefeffffffffff");
+    }
   }
-  onChangeBubbleBreakOff(bool){
-    this._changeBubbleBreakOff=bool;
+  reConfig(i,temp,preventE){
+      if(temp&&typeof(temp)=="object"){
+        if(Object.keys(temp).length>0){
+          this.Store[i]=new Store(temp,this.rootStore,this);
+          creator.call(this,i,temp,this.Store[i].state)
+        }else{
+          isDebugger&&console.warn("reduce ' "+i+" 'is a empty object");
+        }
+      }else{
+        creator.call(this,i,temp);
+      }
+      preventE!=false&&Object.preventExtensions(this.state); //使对象不可扩展
+  }
+  _fireChange(){
+    let isStop=false;
+    this._onChangeHandler.forEach((item)=>{
+      const Event={
+        stopBubble(){
+          isStop=true;
+        }
+      };
+      item(Event);
+    });
+    if(!isStop){
+      this.fatherStore&&this.fatherStore._fireChange();
+    }
   }
   onChange(handler){
     this._onChangeHandler.push(handler);
-  };
-  triggerOnChange(newValue,oldValue){
-    this._onChangeHandler.forEach(function(item) {
-      item(newValue,oldValue);
-    });
-    if(!this._changeBubbleBreakOff){
-      this.fatherStore&&this.fatherStore.triggerOnChange(newValue,oldValue);
-    }
-  }
-  find(state){
-    if(state==this.state){
-      return this;
-    }else{
-      for(let i in this.StoreMap){
-        let temp=this.StoreMap[i].find(state);
-        if(temp){
-          return temp;
-        }
-      }
-    }
   }
 }
-
-
-export default class Provider extends React.Component{
-  static childContextTypes = {
-    store:React.PropTypes.object
-  }
-
-  constructor(props, context){
-    super(props, context);
-    this.data= props.data;
-  }
-
-  getChildContext(a,b){
-    return {
-      store:this.props.store
-    }
-  }
-
-  render(){
-    return  Children.only(this.props.children);
-  }
-}
-
 
 
 //------------mock----------------//
-/*
-const f=_createStore({
-  "ary":(newValue={},oldValue)=>{
-    const c=oldValue?oldValue.concat([]):[];
-    if(newValue.commond=="push"){
-      c[newValue.index]=newValue.value
+
+const TypeA=new Store({
+  name:"A",
+  data:{
+    name:(newValue)=>{
+      console.log("123");
+      return newValue+"typeAfe"
     }
-    return c;
   },
-  "op":(op)=>{
-    return op;
-  },
-  "type":(type)=>{
-    return type;
-  },
-  "data":{
-    "actionType":()=>{
+});
 
-    },
-    "actionData":{
-      "brandIds":(ary)=>{
-        return ary;
-      },
-      "cateId":(cateId)=>{
-        return cateId;
-      },
-      "dateType":()=>{
+const TypeB=new Store({
+  name:"B",
+  data:{
+    name:()=>{
+      console.log("123");
+      return "fe"
+    }
+  },
+});
 
+const TypeC=new Store({
+  "op": null,
+  "type": "ACTION",
+  "data": {
+    "actionType": "PURCHASE",
+    "actionData": {
+      "brandIds": [
+        "20067"
+      ],
+      "cateId": null,
+      "dateType": "RELATIVE_RANGE",
+      "days": "5",
+      "date": null,
+      "rangeDate": null,
+      "channelId": null,
+      "shopIdsStr": null,
+      "itemIdsStr": null,
+      "money": {
+        "min": null,
+        "max": null,
+        "op": "CLOSE_CLOSE"
       },
-      "days":(days=12)=>{
-        return days;
+      "frequency": {
+        "min": 1,
+        "max": null,
+        "op": "OPEN_CLOSE"
       },
-      "money":()=>{
-        return {
-          "min":null,
-          "max":null,
-          "op":"CLOSE_CLOSE"
-        }
-      }
+      "itemPrice": null,
+      "cityIdsStr": null,
+      "storeIdsStr": null
+    }
   }
+});
+
+const f=new Store({
+  "a":{
+    "b":{
+      "c":(newValue)=>{
+        return newValue;
+      }
+    },
+    "test":function(newValue="A",oldValue){
+      this.link(TypeA);
+      this.link(TypeB);
+      return [TypeA.state,TypeB.state];
+    }
+  },
+  "b":{
+    what:()=>{
+
+    }
   }
 });
 
 
+console.log(f.Store["a"].Store["b"]);
+f.onChange(()=>{
+  console.log("rrrrrrrrrrrrrrrrrrrrr");
+});
+f.Store["a"].onChange((Event)=>{
+  console.log("aaaaaaaaaaaaaaaaaaaaaa");
+});
+f.Store["a"].Store["b"].onChange((Event)=>{
+  console.log("fffffffffffff");
+});
+f.Store["a"].Store["test"][1].onChange((Event)=>{
+  console.log("l.................");
+});
+setTimeout(function(){
+  //f.state.a.b.c="fe";
+  TypeB.state.data.name="fffff";
+},2000);
+
+
+
+
+
 window.fff=f;
-console.log(f);
-*/
+window.AAA=TypeA;
+window.BBBB=TypeB;
+window.C=TypeC;

@@ -1,6 +1,6 @@
 import React from "react"
 import ReactDOM from "react-dom"
-import DStore ,{Store} from "../src/index";
+import DStore ,{Store,watch} from "../src/index";
 
 class A extends React.Component{
   constructor(p,c){
@@ -12,7 +12,7 @@ class A extends React.Component{
       onClick={()=>{
           this.props.dstoreData.data=i++;
       }}
-    >{this.props.dstoreData.data}</div>
+    >{this.props.dstoreData.data.actionType}</div>
   }
 }
 
@@ -31,68 +31,52 @@ class B extends React.Component{
     >{this.props.dstoreData.data}</div>
   }
 }
-const myStore=new Store({
-  a:{
-    b:{
-      c(newValue){
-        return newValue;
-      }
-    }
-  },
-  dataList(newValue){
-    const A=this.getSubItem({
-      type:()=>{
-        return "A"
-      },
-      data:(newValue)=>{
-        return newValue+"eeeee";
-      }
-    });
-    const B=this.getSubItem({
-      type:()=>{
-        return "B"
-      },
-      data:(newValue="??")=>{
-        return newValue+"fff";
-      }
-    });
-    return [A,B];
+
+const List=watch(["list as t"])(class _list extends React.Component{
+  constructor(p,c){
+    super(p,c);
+  }
+  render(){
+    return (<div>123</div>)
   }
 });
-setTimeout(()=>{
-  myStore.getState().a.b.c="fffff"
-});
+
 
 class Page extends React.Component{
-  render(){
-    const RunTimeBind=myStore.RunTimeBind;
-    const list=myStore.getState().dataList.map(function(state){
-      let WatchCom;
-      if(state.type=="A"){
-        WatchCom=RunTimeBind(state.data)(A);
-      }else{
-        WatchCom=RunTimeBind(state)(B);
-      }
-
-      return <WatchCom key={state.type} ></WatchCom>
-
+  constructor(p,c){
+    super(p,c);
+    this.store=new Store({
+        a:"123",
+        lists:()=>{
+          return [1,2,3]
+        }
     });
+    /*
+    setTimeout(()=>{
+      this.store.reConfig("lists",()=>{
+        return [4,5,6];
+      });
+    },2000);
+    */
+  }
+  render(){
     return(
-      <div>
-        {list}
-        <select>
-          <option>1</option>
-        </select>
-        <div>btn</div>
-      </div>
+      <DStore store={this.store} >
+        <div>
+          <select>
+            <option>1</option>
+          </select>
+          <List></List>
+          <div>btn</div>
+        </div>
+      </DStore>
     ) 
   }
 } 
 
-ReactDOM.render(<DStore store={myStore}>
-    <Page />
-  </DStore>
-,document.getElementById("body"));
+ReactDOM.render(<Page crowdId={12345} />,document.getElementById("body"));
+/*
+*/
 
 
 
