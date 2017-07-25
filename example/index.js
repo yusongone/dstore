@@ -32,7 +32,7 @@ class B extends React.Component{
   }
 }
 
-const List=watch(["list as t"])(class _list extends React.Component{
+const List=watch(["lists as t","test.a.b as bb","a"])(class _list extends React.Component{
   constructor(p,c){
     super(p,c);
   }
@@ -41,15 +41,37 @@ const List=watch(["list as t"])(class _list extends React.Component{
   }
 });
 
+var aObj={
+  abc:1
+}
 
+          const t=new Store({
+            taaa:1
+          })
 class Page extends React.Component{
   constructor(p,c){
     super(p,c);
     this.store=new Store({
-        a:"123",
+        a:function(newValue,context){
+          console.log(context);
+          //return t;
+          return StoreConnector([t,t]);
+          return [t,t]
+        },
+        test:{
+          a:{
+            b:()=>{
+              return 123;
+            }
+          }
+        },
         lists:()=>{
           return [1,2,3]
-        }
+        },
+    });
+    console.log(this.store.Store["a"]);
+    this.store.Store["a"].onChange(function(a,b,c){
+      console.log("aaaaaaaa",a,b,c);
     });
     /*
     setTimeout(()=>{
