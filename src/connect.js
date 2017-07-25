@@ -69,7 +69,6 @@ export const watch = (OW)=>{
               break;
             }
           }
-          console.log(stepStore);
         }
 
       }

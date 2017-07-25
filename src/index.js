@@ -2,6 +2,9 @@ import Provider ,{watch as _watch} from "./connect.js"
 export default Provider;
 export const watch = _watch;
 
+const STORE=Symbol("store");
+const STORE_CONNECTOR=Symbol("store_connector");
+
 let isDebugger=true;
 
 function creator(key,set,state){
@@ -10,30 +13,21 @@ function creator(key,set,state){
   let setter;
   if(typeof(set)=="function"){
       setter=(newValue)=>{
-        const context=this.Store[key]||{};
-        context.link=(Store,index)=>{
-          Store.rootStore=this.rootStore;
-          Store.fatherStore=this;
-          if(!this.Store[key]){
-            this.Store[key]=[];
-          }
-          if(index!=undefined){
-            this.Store[key][index]=Store;
-          }else{
-            this.Store[key].push(Store);
-          }
-          this.linkStored=true;
-        }
-        context.preValue=value;
         if(status==1){
           return console.warn("old value can't modify ",key);
         }
         status=1;
-        const resultValue=set.call(this.Store[key],newValue,context)
-        this._fireChange(resultValue,value);
-        value=resultValue;
-        status=0;
 
+        const resultValue=set.call(this.Store[key],newValue)
+
+        if(resultValue&&resultValue.__type==STORE_CONNECTOR){
+          const states=resultValue.setter(this.Store,key);
+          value=states;
+        }else{
+          value=resultValue;
+        }
+        this._fireChange(resultValue);
+        status=0;
       };
   }else if(set!=null&&typeof(set)=="object"){
       if(Object.keys(set).length==0){
@@ -69,12 +63,12 @@ function creator(key,set,state){
 
 export class Store{
   constructor(reduce,rootStore,fatherStore){
+    this.__type = STORE;
     this.state={}
     this._onChangeHandler=[];
     this.rootStore=rootStore||this;
     this.fatherStore=fatherStore;
     this.Store={};
-    this.linkStored=false;
     for(var i in reduce){
       const temp=reduce[i];
       this.reConfig(i,temp,false);
@@ -92,40 +86,96 @@ export class Store{
           isDebugger&&console.warn("reduce ' "+i+" 'is a empty object");
         }
       }else{
+        this.Store[i]={
+          state:resultValue,
+          onChange:this.onChange.bind(this),
+          rootStore:this.rootStore,
+          fatherStore:this,
+          _fireChange:this._fireChange.bind(this)
+        };
         const resultValue=creator.call(this,i,temp);
-        if(!this.linkStored){ //在setter 中 link 将采用linkStore 的 Store
-          this.Store[i]={
-            state:resultValue,
-            onChange:(handler)=>{
-              this._onChangeHandler.push(handler);
-            },
-            rootStore:this.rootStore,
-            fatherStore:this
-          };
-        }
       }
       preventE!=false&&Object.preventExtensions(this.state); //使对象不可扩展
   }
-  _fireChange(newValue,oldValue){
+  _fireChange(newValue){
     let isStop=false;
     this._onChangeHandler.forEach((item)=>{
       const Event={
         stopBubble(){
           isStop=true;
         },
+        /*
         preValue:oldValue,
         value:newValue,
+        */
       };
       item(Event);
     });
     if(!isStop){
-      this.fatherStore&&this.fatherStore._fireChange();
+      this.fatherStore&&this.fatherStore._fireChange(newValue);
     }
   }
   onChange(handler){
     this._onChangeHandler.push(handler);
   }
 }
+
+function _isStoreHandler(Store,key){
+  const subStore=this.Stores.Store
+  for(var i in subStore){
+    subStore[i].fatherStore=Store[key];
+    Store[key].Store=subStore;
+  }
+  return this.Stores.state;
+}
+
+function _isArrayHandler(Store,key){
+  const states=this.Stores.map(function(item){
+    return item.state;
+  });
+  this.Stores.forEach(function(item){
+    const subStore=item.Store;
+    for(var i in subStore){
+      subStore[i].fatherStore=Store[key];
+      Store[key].Store=subStore;
+    }
+  });
+  return states;
+}
+
+export class StoreConnector{
+
+  constructor(stores){
+    this.__type=STORE_CONNECTOR;
+    this.Stores;
+    this.setterHandlers;
+    if(stores.__type==STORE){
+      this.Stores=stores;
+      this.setterHandlers=_isStoreHandler;
+    }else if(Array.isArray(stores)){
+
+      let haveUnStore=false;
+      stores.forEach(function(item){
+        if(item.__type!=STORE){
+          haveUnStore=true;
+        }
+      });
+      if(haveUnStore){
+        console.error("Store connector's Array item must be a store object!");
+        return false;
+      }
+      this.Stores=stores;
+      this.setterHandlers=_isArrayHandler;
+    }else{
+      console.error("Store connector's parameter must be support Array or Store object!");
+    }
+  }
+  setter(Store,key){
+      const states=this.setterHandlers(Store,key);
+      return states;
+  }
+}
+
 
 
 //------------mock----------------//
