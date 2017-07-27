@@ -7,6 +7,7 @@ const STORE_CONNECTOR=Symbol("store_connector");
 
 let isDebugger=true;
 
+
 function creator(key,set,state){
   let value;
   let status=0;
@@ -18,12 +19,13 @@ function creator(key,set,state){
         }
         status=1;
 
-        const resultValue=set.call(this.Store[key],newValue)
+        const resultValue=set.call(this,newValue)
 
         if(resultValue&&resultValue.__type==STORE_CONNECTOR){
           const states=resultValue.setter(this.Store,key);
           value=states;
         }else{
+          console.log(key,value);
           value=resultValue;
         }
         this._fireChange(resultValue);
@@ -42,8 +44,8 @@ function creator(key,set,state){
         };
       }
   }else{
-      value=set;
       setter=(newValue)=>{
+        value=set;
         isDebugger&&console.warn(key,newValue,"This key is const!");
       };
   } 
@@ -54,48 +56,18 @@ function creator(key,set,state){
         return value;
       }
   });
-  if(typeof(set)=="function"){
+  if(typeof(set)!="object"){
     this.state[key]=undefined;
   }
   return value;
 }
 
-
-export class Store{
-  constructor(reduce,rootStore,fatherStore){
+class BasicStore{
+  constructor(fatherStore){
     this.__type = STORE;
     this.state={}
     this._onChangeHandler=[];
-    this.rootStore=rootStore||this;
     this.fatherStore=fatherStore;
-    this.Store={};
-    for(var i in reduce){
-      const temp=reduce[i];
-      this.reConfig(i,temp,false);
-    }
-    Object.preventExtensions(this.state); //使对象不可扩展
-    if(this.fatherStore==undefined){// 根 store
-    }
-  }
-  reConfig(i,temp,preventE){
-      if(temp&&typeof(temp)=="object"){
-        if(Object.keys(temp).length>0){
-          this.Store[i]=new Store(temp,this.rootStore,this);
-          creator.call(this,i,temp,this.Store[i].state)
-        }else{
-          isDebugger&&console.warn("reduce ' "+i+" 'is a empty object");
-        }
-      }else{
-        this.Store[i]={
-          state:resultValue,
-          onChange:this.onChange.bind(this),
-          rootStore:this.rootStore,
-          fatherStore:this,
-          _fireChange:this._fireChange.bind(this)
-        };
-        const resultValue=creator.call(this,i,temp);
-      }
-      preventE!=false&&Object.preventExtensions(this.state); //使对象不可扩展
   }
   _fireChange(newValue){
     let isStop=false;
@@ -115,10 +87,49 @@ export class Store{
       this.fatherStore&&this.fatherStore._fireChange(newValue);
     }
   }
+
   onChange(handler){
     this._onChangeHandler.push(handler);
   }
+
 }
+
+class LeafStore extends BasicStore{
+  constructor(fatherStore,setValue,key){
+    super(fatherStore);
+    console.log(this.state,setValue);
+  }
+}
+
+export class Store extends BasicStore{
+  constructor(reduce,fatherStore){
+    super(fatherStore);
+    this.Store={};
+    for(var i in reduce){
+      const temp=reduce[i];
+      this.reConfig(i,temp,false);
+    }
+    Object.preventExtensions(this.state); //使对象不可扩展
+    if(this.fatherStore==undefined){// 根 store
+    }
+  }
+  reConfig(i,temp,preventE){
+      if(temp&&typeof(temp)=="object"){
+        if(Object.keys(temp).length>0){
+          this.Store[i]=new Store(temp,this);
+          creator.call(this,i,temp,this.Store[i].state)
+        }else{
+          isDebugger&&console.warn("reduce ' "+i+" 'is a empty object");
+        }
+      }else{ // function get state
+        this.Store[i]=new LeafStore(this,temp);
+        const resultValue=creator.call(this,i,temp);
+        this.Store[i].state=resultValue;
+      }
+      preventE!=false&&Object.preventExtensions(this.state); //使对象不可扩展
+  }
+}
+
 
 function _isStoreHandler(Store,key){
   const subStore=this.Stores.Store
@@ -137,8 +148,11 @@ function _isArrayHandler(Store,key){
     const subStore=item.Store;
     for(var i in subStore){
       subStore[i].fatherStore=Store[key];
-      Store[key].Store=subStore;
     }
+    if(!Store[key].Store){
+      Store[key].Store=[]
+    }
+    Store[key].Store.push(subStore);
   });
   return states;
 }
@@ -149,11 +163,11 @@ export class StoreConnector{
     this.__type=STORE_CONNECTOR;
     this.Stores;
     this.setterHandlers;
+
     if(stores.__type==STORE){
       this.Stores=stores;
       this.setterHandlers=_isStoreHandler;
     }else if(Array.isArray(stores)){
-
       let haveUnStore=false;
       stores.forEach(function(item){
         if(item.__type!=STORE){

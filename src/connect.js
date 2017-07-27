@@ -23,10 +23,82 @@ export default class Provider extends React.Component{
 
 
 
+function _getStore(str){
+  const rootStore=this.rootStore;
+  let ary=str.split(".");
+  let stepStore=rootStore;
+  for(let i=0;i<ary.length;i++){
+    let key=ary[i]
+    let tempStore;
+    if(stepStore["Store"]){
+      if(stepStore["Store"][key]!=undefined){
+        tempStore=stepStore["Store"][key];
+      }
+    }
+    stepStore=tempStore;
+    if(!tempStore){
+      return stepStore;
+    }
+    return stepStore;
+  }
+}
 /*
   watch function
 */
-export const watch = (OW)=>{
+
+function _mapStringStoreToASMap(item){
+  const tempSplit=item.split(" as ");
+  if(tempSplit[1]!=undefined){
+    this.ASMap[tempSplit[0]]={
+      mapName:tempSplit[1],
+      store:null
+    }
+  }else{
+    this.ASMap[temSplit[0]]={
+      mapName:tempSplit[0],
+      store:null
+    }
+  }
+
+  for(var i in this.ASMap){
+    const temp=this.ASMap[i];
+    const store=this._getStore(i,);
+    temp.store=store;
+    this.state[i]=store;
+
+    bindChange.call(this,store)
+  }
+}
+
+function bindChange(store){
+    store.onChange((Event)=>{
+      if(this.option.changeBubble===false){
+        Event.stopBubble();
+      }
+      for(var i in this.ASMap){
+        const map=this.ASMap[i];
+        const key=map.mapName;
+        const temp={};
+        temp[key]=map.store;
+        this.setState(temp);
+      };
+    });
+}
+
+function _mapObjStoreToASMap(item){
+  for(var i in item){
+    const store=item[i];
+    this.ASMap[i]={
+      mapName:i,
+      store:item[i]
+    }
+    this.state[i]=store;
+    bindChange.call(this,store)
+  }
+}
+
+
+export const watch = (OW,option)=>{
   return (Component)=>{
     return class Box extends React.Component{
       static contextTypes = {
@@ -36,46 +108,27 @@ export const watch = (OW)=>{
         super(p,c);
         let Store;
         this.ASMap={};
-        const rootStore=c.store;
-
+        this.option=option||{};
+        this.rootStore=c.store;
+        this.state={}
         OW.map((item)=>{
-          const tempSplit=item.split(" as ");
-          if(tempSplit[1]!=undefined){
-            this.ASMap[tempSplit[0]]=tempSplit[1];
+
+          if(item!=null&&typeof(item)=="object"){
+            _mapObjStoreToASMap.call(this,item);
+          }else if(typeof(item)=="string"){
+            _mapStringStoreToASMap.call(this,item);
           }else{
-            this.ASMap[tempSplit[0]]=tempSplit[0];
+            console.warn("watch item illegal!");
           }
-          return tempSplit[0];
+
         });
 
-        for(var i in this.ASMap){
-          const temp=this.ASMap[i];
-          getStore(i);
-        }
-
-        function getStore(str){
-          let ary=str.split(".");
-          let stepStore=rootStore;
-          for(let i=0;i<ary.length;i++){
-            let key=ary[i]
-            let tempStore;
-            if(stepStore["Store"]){
-              if(stepStore["Store"][key]!=undefined){
-                tempStore=stepStore["Store"][key];
-              }
-            }
-            stepStore=tempStore;
-            if(!tempStore){
-              break;
-            }
-          }
-        }
-
       }
+      _getStore=_getStore
       render(){
         const mergeAsState={};
         for(let i in this.state){
-          let key=this.ASMap[i];
+          let key=this.ASMap[i].mapName;
           if(key){
             mergeAsState[key]=this.state[i];
           }else{
