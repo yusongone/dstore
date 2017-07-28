@@ -7,6 +7,19 @@ const STORE_CONNECTOR=Symbol("store_connector");
 
 let isDebugger=true;
 
+function createObjectState(key,set,state){
+  if(Object.keys(set).length==0){
+    value=set;
+    setter=(newValue)=>{
+      isDebugger&&console.warn(key,newValue,"This key is const Object!");
+    };
+  }else{
+    value=state;
+    setter=(newValue)=>{
+      isDebugger&&console.warn(key,newValue,"This key is not a setter function!");
+    };
+  }
+}
 
 function creator(key,set,state){
   let value;
@@ -113,9 +126,25 @@ export class Store extends BasicStore{
     if(this.fatherStore==undefined){// 根 store
     }
   }
+  XreConfig(i,temp,preventE){
+      if(temp&&typeof(temp)=="object"){
+        if(Object.keys(temp).length>0){
+          this.Store[i]=new Store(temp,this);
+          creator.call(this,i,temp,this.Store[i].state)
+        }else{
+          isDebugger&&console.warn("reduce ' "+i+" 'is a empty object");
+        }
+      }else{ // function get state
+        this.Store[i]=new LeafStore(this,temp);
+        const resultValue=creator.call(this,i,temp);
+        this.Store[i].state=resultValue;
+      }
+      preventE!=false&&Object.preventExtensions(this.state); //使对象不可扩展
+  }
   reConfig(i,temp,preventE){
       if(temp&&typeof(temp)=="object"){
         if(Object.keys(temp).length>0){
+          const setter=createObjectState();
           this.Store[i]=new Store(temp,this);
           creator.call(this,i,temp,this.Store[i].state)
         }else{

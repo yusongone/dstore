@@ -1,127 +1,180 @@
 import React from "react"
 import ReactDOM from "react-dom"
-import DStore ,{Store,watch,StoreConnector} from "../src/index";
+const CONNECTOR=Symbol("connector")
+const DSTATE=Symbol("dstore_data")
+const isDebugger=true;
 
-let i=0;
 
-class CrowdAttrUI extends React.Component{
-  constructor(p,c){
-    super(p,c);
-    console.log("fffffeeeeeeeeeeeeee");
-
+class ItemWatcher{
+  constructor(){
+    this._changeHander=[];
   }
-  render(){
-    const {dataStore,typeStore}=this.props;
-              console.log(typeStore.state);
-    return <div>
-            <select 
-              value={typeStore.state} 
-              onChange={(event)=>{
-                const value=event.target.value;
-                typeStore.state=value;
-              }}
-            >
-            <option  value="CROWD_ATTR" >CA</option>
-            <option  value="OFFLINE" >of</option>
-          </select>
-          <div 
-            onClick={function(){
-              dataStore.state.days="fffffffffffffffffff";
-            }}
-          >
-            {dataStore.state.days}
-          </div>
-    </div>
+  onChange(handler){
+    this._changeHander.push(handler);
+  }
+  _change=(key,value)=>{
+
+    this._changeHander.forEach(function(item){
+      item(key,value);
+    });
+    console.log("have Change -----",key,value,this._changeHander);
   }
 }
 
-const List=watch(["lists as t","test.a.b as bb","a as AStores"])(class _list extends React.Component{
-  constructor(p,c){
-    super(p,c);
+function addOnChangeLister(state,cb){
+  if(state.__type!=DSTATE){
+    return console.warn("this object is not dstore state");
   }
-  render(){
-    const {AStores} = this.props;
-    const list=AStores.Store.map((Store,i)=>{
-      console.log(Store.type);
-      if(Store.type.state=="CROWD_ATTR"){
-        let C=watch([{"dataStore":Store.data,"typeStore":Store.type}],{changeBubble:false})(CrowdAttrUI);
-        return <C key={"op"+i} />;
-      }else if(Store.type.state=="OFFLINE"){
-        let C=watch([{"dataStore":Store.data,"typeStore":Store.type}],{changeBubble:false})(CrowdAttrUI);
-        return <C key={"op"+i} />;
-      }
-      return <div>404</div>;
+
+  state.__ItemWatcher.onChange(function(key,value){
+    cb(key,value);
+  });
+};
+
+function addItemWatcher(state){
+    Object.defineProperty(state,"__ItemWatcher",{
+        enumerable: false,
+        writable: false,
+        configurable: false,
+        value:new ItemWatcher()
     });
-    return (<div>fefe{list}</div>)
+    Object.defineProperty(state,"__type",{
+        enumerable: false,
+        writable: false,
+        configurable: false,
+        value:DSTATE
+    });
+}
+
+function createStore(configObj){
+  const state=RecursionCreateState(configObj,(state)=>{
+    addItemWatcher(state);
+  });
+  return state;
+}
+
+function RecursionCreateState(configObj,cb){
+  const state={};
+  cb&&cb(state);
+  const keys=Object.keys(configObj);
+  keys.forEach((key,index)=>{
+    const setter=configObj[key];
+    if(setter!=null&&typeof(setter)=="object"){ // object
+      defineObjectState(key,setter,state);
+    }else{
+      defineState(key,setter,state);
+    }
+  });
+  return state;
+}
+
+function defineObjectState(key,setter,state){
+  const subState=RecursionCreateState(setter,(subState)=>{
+    addItemWatcher(subState);
+  });
+  Object.defineProperty(state,key,{
+      enumerable: true,
+      value:subState
+  });
+  addOnChangeLister(state,function(){
+    console.log("fefefefefefefef");
+  });
+};
+
+function defineState(key,setter,state){
+  let value;
+  let inSetter;
+  let set; // definedProperty set;
+  let init=true;
+  if(typeof(setter)=="function"){ // function 
+    set=(newValue)=>{
+      if(inSetter==1){
+        return console.warn("old value can't modify ",key);
+      }
+      inSetter=1;
+
+      const resultValue=setter.call(this,newValue);
+      if(resultValue&&resultValue.__type==CONNECTOR){
+        console.log("abcd");
+      }else{
+        value=resultValue;
+      }
+      !init&&state.__ItemWatcher._change(key,value);
+    }
+  }else{ // string, num, bool,.......
+    value=setter;
+    set=(newValue)=>{
+      console.log(state.__ItemWatcher);
+      !init&&state.__ItemWatcher._change(key,value);
+      isDebugger&&console.warn(key + ":This value is const, if you want modify, you can use function replaced! ");
+    }
   }
+  Object.defineProperty(state,key,{
+      enumerable: true,
+      set:set,
+      get(){
+        return value;
+      }
+  });
+
+  if(typeof(setter)=="function"){ // function 
+    state[key]=undefined;
+  }
+  init=false;
+};
+
+
+class Link{
+
+}
+
+function link(obj){
+  const link=new Link();
+  if(Array.isArray(obj)){
+
+  }else{
+
+  }
+  return link;
+}
+
+
+
+
+
+
+const A=createStore({
+  name:"fefefe"
 });
 
+const B=createStore({
+  name:"fefefe"
+});
 
-const Offline=new Store({
-  type:()=>{
-    console.log("ffff");
-    return "OFFLINE";
+const t=createStore({
+  name:"fefefe",
+  test:()=>{
+    return link([A,B]);
   },
-  myType:()=>{
-    return "fff";
-  },
-  data:{
-    days:(newValue)=>{
-      return newValue+"bOffline";
+  a:{
+    b:{
+      c:{
+        d:()=>{
+          return "abc"
+        }
+      }
     }
   }
 });
 
-  const crowdAttr=new Store({
-    type:()=>{
-    console.log("ffff");
-      return "CROWD_ATTR";
-    },
-    data:{
-      days:(newValue)=>{
-        return newValue+"aCrowdAttr";
-      }
-    }
-  })
-function getCrowdAttr(){
-  return crowdAttr;
-}
+addOnChangeLister(t.a.b.c,function(){
+  console.log("f-----------------------------------");
+});
 
-class Page extends React.Component{
-  constructor(p,c){
-    super(p,c);
-    this.store=new Store({
-        a:function(newValue){
-          console.log("ffffff--------------");
-          return new StoreConnector([getCrowdAttr(),Offline,getCrowdAttr()]);
-        },
-        test:{
-          a:{
-            b:()=>{
-              return 123;
-            }
-          }
-        },
-        lists:()=>{
-          return [1,2,3]
-        },
-    });
-  }
-  render(){
-    return(
-      <DStore store={this.store} >
-        <div>
-          <List></List>
-          <div>btn</div>
-        </div>
-      </DStore>
-    ) 
-  }
-} 
+setTimeout(function(){
+  t.name="fff"
+},2000);
 
-ReactDOM.render(<Page crowdId={12345} />,document.getElementById("body"));
-/*
-*/
+window.fff=t;
 
-
-
+console.log(t,JSON.stringify(t));
