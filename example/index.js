@@ -4,24 +4,39 @@ const CONNECTOR=Symbol("connector")
 const DSTATE=Symbol("dstore_data")
 const isDebugger=true;
 
+class Event{
+  _stop=false;
+  stopBubble(){
+    this._stop=true;
+  }
+}
 
 class ItemWatcher{
-  constructor(){
+  constructor(fatherItemWatcher){
     this._changeHander=[];
+    this._fatherItemWatcher;
+  }
+  bindFatherItemWatcher(itemWatcher){
+    this._fatherItemWatcher=itemWatcher;
   }
   onChange(handler){
     this._changeHander.push(handler);
   }
-  _change=(key,value)=>{
-
-    this._changeHander.forEach(function(item){
-      item(key,value);
+  _change(key,value){
+    this._changeHander.forEach((item)=>{
+      const event=new Event();
+      event.key=key;
+      event.value=value;
+      item(event);
+      if(!event._stop&&this._fatherItemWatcher){
+        this._fatherItemWatcher._change(key,value);
+      }
     });
-    console.log("have Change -----",key,value,this._changeHander);
   }
 }
 
 function addOnChangeLister(state,cb){
+
   if(state.__type!=DSTATE){
     return console.warn("this object is not dstore state");
   }
@@ -29,38 +44,53 @@ function addOnChangeLister(state,cb){
   state.__ItemWatcher.onChange(function(key,value){
     cb(key,value);
   });
+
 };
 
-function addItemWatcher(state){
-    Object.defineProperty(state,"__ItemWatcher",{
-        enumerable: false,
-        writable: false,
-        configurable: false,
-        value:new ItemWatcher()
-    });
-    Object.defineProperty(state,"__type",{
-        enumerable: false,
-        writable: false,
-        configurable: false,
-        value:DSTATE
-    });
+function addItemWatcher(state,fatherItemWatcher){
+  const itemWatcher=new ItemWatcher();
+  itemWatcher.bindFatherItemWatcher(fatherItemWatcher);
+  Object.defineProperty(state,"__ItemWatcher",{
+      enumerable: false,
+      writable: false,
+      configurable: false,
+      value:itemWatcher
+  });
+  Object.defineProperty(state,"__type",{
+      enumerable: false,
+      writable: false,
+      configurable: false,
+      value:DSTATE
+  });
+  Object.defineProperty(state,"link",{
+      enumerable: false,
+      writable: false,
+      configurable: false,
+      value:function(subState){
+        subState.__ItemWatcher.bindFatherItemWatcher(itemWatcher);
+      }
+  });
+  return itemWatcher;
 }
 
 function createStore(configObj){
-  const state=RecursionCreateState(configObj,(state)=>{
-    addItemWatcher(state);
-  });
+  const state=RecursionCreateState(configObj);
+  state.__ItemWatcher.onChange((key,value)=>{
+    console.log("------",key,value);
+  })
+  window.sss=state;
   return state;
 }
 
-function RecursionCreateState(configObj,cb){
+function RecursionCreateState(configObj,fatherItemWatcher){
   const state={};
-  cb&&cb(state);
+  const itemWatcher=addItemWatcher(state,fatherItemWatcher);
+
   const keys=Object.keys(configObj);
   keys.forEach((key,index)=>{
     const setter=configObj[key];
     if(setter!=null&&typeof(setter)=="object"){ // object
-      defineObjectState(key,setter,state);
+      const subState=defineObjectState(key,setter,state,itemWatcher);
     }else{
       defineState(key,setter,state);
     }
@@ -68,17 +98,13 @@ function RecursionCreateState(configObj,cb){
   return state;
 }
 
-function defineObjectState(key,setter,state){
-  const subState=RecursionCreateState(setter,(subState)=>{
-    addItemWatcher(subState);
-  });
+function defineObjectState(key,setter,state,itemWatcher){
+  const subState=RecursionCreateState(setter,itemWatcher);
   Object.defineProperty(state,key,{
       enumerable: true,
       value:subState
   });
-  addOnChangeLister(state,function(){
-    console.log("fefefefefefefef");
-  });
+  return subState;
 };
 
 function defineState(key,setter,state){
@@ -93,19 +119,19 @@ function defineState(key,setter,state){
       }
       inSetter=1;
 
-      const resultValue=setter.call(this,newValue);
+      const resultValue=setter.call(state,newValue);
       if(resultValue&&resultValue.__type==CONNECTOR){
         console.log("abcd");
       }else{
         value=resultValue;
       }
       !init&&state.__ItemWatcher._change(key,value);
+      inSetter=0;
     }
   }else{ // string, num, bool,.......
     value=setter;
     set=(newValue)=>{
-      console.log(state.__ItemWatcher);
-      !init&&state.__ItemWatcher._change(key,value);
+      !init&&state.__ItemWatcher._change(key,newValue,value);
       isDebugger&&console.warn(key + ":This value is const, if you want modify, you can use function replaced! ");
     }
   }
@@ -125,6 +151,10 @@ function defineState(key,setter,state){
 
 
 class Link{
+  __type=CONNECTOR;
+  constructor(){
+
+  }
 
 }
 
@@ -148,13 +178,15 @@ const A=createStore({
 });
 
 const B=createStore({
-  name:"fefefe"
+  name:"nnnnnnn"
 });
 
 const t=createStore({
   name:"fefefe",
-  test:()=>{
-    return link([A,B]);
+  test:function(){
+    console.log(this);
+    this.link(A);
+    return [A,B,"fe"];
   },
   a:{
     b:{
@@ -166,13 +198,26 @@ const t=createStore({
     }
   }
 });
+console.log(t);
 
-addOnChangeLister(t.a.b.c,function(){
-  console.log("f-----------------------------------");
+addOnChangeLister(t.a.b,function(Event){
+  console.log("fefe-----------------------------------",Event);
+});
+console.log(A);
+addOnChangeLister(A,function(Event){
+  console.log("tA-----------------------------------",Event);
+});
+addOnChangeLister(t.test,function(Event){
+  console.log("test-----------------------------------",Event);
+});
+
+addOnChangeLister(t.a.b.c,function(Event){
+  Event.stopBubble();
+  console.log("f-----------------------------------",Event);
 });
 
 setTimeout(function(){
-  t.name="fff"
+  A.name="eeeee"
 },2000);
 
 window.fff=t;
