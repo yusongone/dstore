@@ -3,6 +3,10 @@ import ReactDOM from "react-dom"
 import state from "./stateFactory"
 import {Provider,watch} from "../src/index"
 
+const crowdTypes={
+  "CROWD_ATTR":"人群属性",
+  "OFFLINE":"线下触点"
+}
 
 class CrowdAttrUI extends React.Component{
   constructor(p,c){
@@ -11,21 +15,24 @@ class CrowdAttrUI extends React.Component{
 
   }
   render(){
-    const {data,type}=this.props;
+    let {data,type}=this.props;
+    let options=[];
+    for(var i in crowdTypes){
+      options.push(<option key={i} value={i} >{crowdTypes[i]}</option>);
+    }
     return <div>
             <select 
               value={type} 
               onChange={(event)=>{
                 const value=event.target.value;
-                typeStore.state=value;
+                this.props.onTypeChange&&this.props.onTypeChange(value);
               }}
             >
-            <option  value="CROWD_ATTR" >CA</option>
-            <option  value="OFFLINE" >of</option>
+            {options}
           </select>
           <div 
             onClick={function(){
-              dataStore.state.days="fffffffffffffffffff";
+              data.name="eef"
             }}
           >
             {data.name}
@@ -40,7 +47,14 @@ class _Lists extends React.Component{
     const ary=this.props.lists.map(function(item,index){
       if(item.type=="CROWD_ATTR"){
         let C=watch({data:item.data,type:item.type},{changeBubble:false})(CrowdAttrUI);
-        return <C key={"op"+index} />;
+        return (
+          <C 
+          key={"op"+index} 
+          onTypeChange={(value)=>{
+            this.props.lists={type:"changeType","index":index,data:value}
+          }}
+          />
+          );
       }else if(item.type=="OFFLINE"){
         let C=watch({data:item.data,type:item.type},{changeBubble:false})(CrowdAttrUI);
         return <C key={"op"+index} />;
@@ -55,8 +69,8 @@ class Page extends React.Component{
   render(){
     
     const Lists=watch({
-      lists:getState("conditionLists"),
-      name:getState("test.myName")
+        lists:state.conditionLists,
+        name:state.test.myName
     })(_Lists);
     return <div>
       <Lists />
@@ -64,6 +78,7 @@ class Page extends React.Component{
   }
 }
 
+//----------------------- 因为watch 对象中 存在 字符串，容易和state 的字符串冲突，需要找到新的 watch 方法；
 
 ReactDOM.render(
   <Provider state={state}>

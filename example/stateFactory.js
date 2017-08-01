@@ -3,12 +3,15 @@ import {createState} from "../src/index"
 
 function getFullLink(){
   return createState({
-    type:"OFFLINE",
+    type(newValue){
+      console.log(newValue);
+      return "OFFLINE";
+    },
     data:{
-      name(newValue="fe"){
+      name(newValue="name:abc"){
         return newValue;
       },
-      age(newValue="18"){
+      age(newValue="age:18"){
         return newValue;
       }
     }
@@ -17,7 +20,9 @@ function getFullLink(){
 
 function getCrowdAttr(){
   return createState({
-    type:"CROWD_ATTR",
+    type(){
+      return "CROWD_ATTR";
+    },
     data:{
       name(newValue="fe"){
         return newValue;
@@ -30,12 +35,16 @@ function getCrowdAttr(){
 }
 
 const t=createState({
+  // valueOrComomond = {type:"changeType","index":index,data:value}
   conditionLists(valueOrCommond={},context){
-    if(valueOrCommond.type=="creat"){
+    console.log(context);
+    if(context.type=="INIT"){
+      const state=getFullLink();
+      const state2=getCrowdAttr();
+      return [state,state2];
+    }else if(valueOrCommond.type=="changeType"){
+      console.log(context);
     }
-    const state=getFullLink();
-    const state2=getCrowdAttr();
-    return [state,state2];
   },
   test:{
     myName(newValue="fe"){

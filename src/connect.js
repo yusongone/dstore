@@ -87,21 +87,22 @@ export const watch = (OW,option)=>{
         super(p,c);
         const rootState=c.state;
         this.state={}
+        this.status="create";
         for(var i in OW){
-          const state=_getState(rootState,OW[i]);
+          const state=OW[i];
           this.state[i]=state;
-          if(!state){console.log(OW[i],i)}
           if(state.__ItemWatcher){
             state.__ItemWatcher.onChange(()=>{
-              console.log("fe");
+              if(this.status!="unmount"){
                 const updateState={};
                 updateState[i]=state;
                 this.setState(updateState);
+              }
             });
           }else{
             const ary=getStateFullLink(rootState,state);
             ary[1].obj.__ItemWatcher.onChange((Event)=>{
-              if(Event.key==OW[i].split(".").pop()){
+              if(this.status!="unmount"&&Event.key==OW[i].split(".").pop()){
                const state=_getState(rootState,OW[i]);
                 const updateState={};
                 updateState[i]=state;
@@ -114,6 +115,9 @@ export const watch = (OW,option)=>{
       render(){
         const props={...this.props,...this.state}
         return <Component {...props} />
+      }
+      componentWillUnmount(){
+        this.status="unmount";
       }
     }
   }
